@@ -1,12 +1,6 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-get_ipython().system('pip freeze | grep scikit-learn')
-
-
-get_ipython().system('python -V')
-
-
 import pickle
 import pandas as pd
 
@@ -63,7 +57,4 @@ df_result.to_parquet(
 import os
 file_size = os.path.getsize(output_file)
 print(f"File size: {file_size / (1024 * 1024):.2f} MB")
-
-
-get_ipython().system('jupyter nbconvert --to script starter.ipynb')
 
