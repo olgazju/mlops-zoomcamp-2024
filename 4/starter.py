@@ -1,17 +1,13 @@
-#!/usr/bin/env python
-# coding: utf-8
-
 import pickle
 import pandas as pd
+import numpy as np
+import os
+import typer
 
-
-with open('model.bin', 'rb') as f_in:
-    dv, model = pickle.load(f_in)
-
-
-categorical = ['PULocationID', 'DOLocationID']
+app = typer.Typer()
 
 def read_data(filename):
+    categorical = ['PULocationID', 'DOLocationID']
     df = pd.read_parquet(filename)
     
     df['duration'] = df.tpep_dropoff_datetime - df.tpep_pickup_datetime
@@ -23,38 +19,48 @@ def read_data(filename):
     
     return df
 
+def process_data(year: int, month: int):
+    with open('model.bin', 'rb') as f_in:
+        dv, model = pickle.load(f_in)
 
-year = 2023
-month = 3
-df = read_data(f'https://d37ci6vzurychx.cloudfront.net/trip-data/yellow_tripdata_{year:04d}-{month:02d}.parquet')
+    df = read_data(f'https://d37ci6vzurychx.cloudfront.net/trip-data/yellow_tripdata_{year:04d}-{month:02d}.parquet')
 
+    categorical = ['PULocationID', 'DOLocationID']
+    dicts = df[categorical].to_dict(orient='records')
+    X_val = dv.transform(dicts)
+    y_pred = model.predict(X_val)
 
-dicts = df[categorical].to_dict(orient='records')
-X_val = dv.transform(dicts)
-y_pred = model.predict(X_val)
+    mean_prediction = np.mean(y_pred)
 
+    df['ride_id'] = f'{year:04d}/{month:02d}_' + df.index.astype('str')
 
-import numpy as np
-standard_deviation = np.std(y_pred)
-print(f"Standard Deviation of the predicted duration: {standard_deviation}")
+    df_result = pd.DataFrame({
+        'ride_id': df['ride_id'],
+        'prediction': y_pred
+    })
 
+    output_file = 'results.parquet'
+    df_result.to_parquet(
+        output_file,
+        engine='pyarrow',
+        compression=None,
+        index=False
+    )
 
-df['ride_id'] = f'{year:04d}/{month:02d}_' + df.index.astype('str')
+    file_size = os.path.getsize(output_file) / (1024 * 1024)
 
-df_result = pd.DataFrame({
-    'ride_id': df['ride_id'],
-    'prediction': y_pred
-})
+    return mean_prediction, file_size
 
-output_file = 'results.parquet'
-df_result.to_parquet(
-    output_file,
-    engine='pyarrow',
-    compression=None,
-    index=False
-)
+@app.command()
+def predict(
+    year: int = typer.Option(help="Year of the trip data"),
+    month: int = typer.Option(help="Month of the trip data")
+):
+    mean_prediction, file_size = process_data(year, month)
+    print(f"Mean predicted duration: {mean_prediction:.2f}")
+    print(f"File size: {file_size:.2f} MB")
 
-import os
-file_size = os.path.getsize(output_file)
-print(f"File size: {file_size / (1024 * 1024):.2f} MB")
+if __name__ == "__main__":
+    app()
 
+# python starter.py --year 2023 --month 4
